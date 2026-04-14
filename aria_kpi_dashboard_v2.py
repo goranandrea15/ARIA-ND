@@ -4,6 +4,73 @@ import os
 import json
 from datetime import datetime
 
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
+# ─── COORDONNÉES GÉOGRAPHIQUES ────────────────────────────────
+COORDS = {
+    # Centres de distribution
+    "CD-Montreal":    (45.5017, -73.5673),
+    "CD-Quebec":      (46.8139, -71.2080),
+    "CD-Sherbrooke":  (45.4042, -71.8929),
+    "CD-Gatineau":    (45.4765, -75.7013),
+    # Établissements
+    "CHUM":                (45.5100, -73.5543),
+    "McGill-Univ-Health":  (45.4735, -73.6010),
+    "CIUSSS-NordMTL":      (45.5580, -73.6832),
+    "CISSS-Laval":         (45.6066, -73.7124),
+    "CISSS-Monteregie-O":  (45.3500, -73.8800),
+    "CISSS-Monteregie-C":  (45.4500, -73.4500),
+    "CISSS-Monteregie-E":  (45.3200, -73.1200),
+    "CISSS-Lanaudiere":    (45.8500, -73.4000),
+    "CISSS-Laurentides":   (45.9500, -74.0000),
+    "CHSLD-Longueuil":     (45.5318, -73.5200),
+    "CIUSSS-Estrie-CHUS":  (45.4042, -71.8929),
+    "CISSS-Monteregie-Est2":(45.3300, -72.8000),
+    "CISSS-Outaouais":     (45.4765, -75.7013),
+    "CISSS-Laurentides-N": (46.1000, -74.6000),
+    "CIUSSS-Capitale-Nat": (46.8139, -71.2080),
+    "IUCPQ":               (46.7800, -71.3100),
+    "CIUSSS-Mauricie":     (46.3500, -72.5500),
+    "CISSS-ChaudiereApp":  (46.3500, -71.0000),
+    "CISSS-Bas-StLaurent": (47.8500, -69.5000),
+    "CISSS-Saguenay-LSJ":  (48.4284, -71.0537),
+    "CIUSSS-Saguenay":     (48.3800, -71.1000),
+    "CISSS-CoteNord":      (50.2000, -66.3800),
+    "CISSS-Gaspesie":      (48.8300, -64.4800),
+    "CISSS-Abitibi":       (48.2500, -79.0000),
+    "CUSM-Hopital":        (45.4735, -73.6100),
+    "CHU-Sainte-Justine":  (45.5020, -73.6200),
+    "CISSS-Laval-CHSLD":   (45.6200, -73.7300),
+    "CIUSSS-Centre-Ouest": (45.4900, -73.6000),
+    "CISSS-Richelieu-Yam": (45.4000, -72.7300),
+    "CISSS-Nunavik":       (58.1000, -68.4000),
+}
+
+# Mapping établissement → CD
+ETAB_TO_CD = {
+    "CHUM": "CD-Montreal", "McGill-Univ-Health": "CD-Montreal",
+    "CIUSSS-NordMTL": "CD-Montreal", "CISSS-Laval": "CD-Montreal",
+    "CISSS-Monteregie-O": "CD-Montreal", "CISSS-Monteregie-C": "CD-Montreal",
+    "CISSS-Monteregie-E": "CD-Montreal", "CISSS-Lanaudiere": "CD-Montreal",
+    "CISSS-Laurentides": "CD-Montreal", "CHSLD-Longueuil": "CD-Montreal",
+    "CUSM-Hopital": "CD-Montreal", "CHU-Sainte-Justine": "CD-Montreal",
+    "CISSS-Laval-CHSLD": "CD-Montreal", "CIUSSS-Centre-Ouest": "CD-Montreal",
+    "CISSS-Richelieu-Yam": "CD-Montreal",
+    "CIUSSS-Estrie-CHUS": "CD-Sherbrooke", "CISSS-Monteregie-Est2": "CD-Sherbrooke",
+    "CISSS-Outaouais": "CD-Gatineau", "CISSS-Laurentides-N": "CD-Gatineau",
+    "CIUSSS-Capitale-Nat": "CD-Quebec", "IUCPQ": "CD-Quebec",
+    "CIUSSS-Mauricie": "CD-Quebec", "CISSS-ChaudiereApp": "CD-Quebec",
+    "CISSS-Bas-StLaurent": "CD-Quebec", "CISSS-Saguenay-LSJ": "CD-Quebec",
+    "CIUSSS-Saguenay": "CD-Quebec", "CISSS-CoteNord": "CD-Quebec",
+    "CISSS-Gaspesie": "CD-Quebec", "CISSS-Abitibi": "CD-Quebec",
+    "CISSS-Nunavik": "CD-Quebec",
+}
+
 # ─── Azure OpenAI ─────────────────────────────────────────────
 try:
     from openai import AzureOpenAI
@@ -121,10 +188,11 @@ with st.sidebar:
     st.markdown("[github.com/goranandrea15/ARIA-ND](https://github.com/goranandrea15/ARIA-ND)")
 
 # ─── ONGLETS ─────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Dashboard KPIs",
     "🔐 Validation des seuils (Human in the Loop)",
-    "📝 Rapport exécutif IA"
+    "📝 Rapport exécutif IA",
+    "🗺️ Carte du réseau O-D"
 ])
 
 # ─── CHARGEMENT DONNÉES ──────────────────────────────────────
@@ -341,6 +409,181 @@ with tab3:
         with col_s2:
             if seuils_attente > 0:
                 st.warning(f"⚠️ {seuils_attente} seuil(s) en attente — seuils par défaut utilisés")
+
+# ═══════════════════ TAB 4 : CARTE O-D ══════════════════════
+with tab4:
+    st.markdown("#### 🗺️ Carte du réseau Origine-Destination — Santé Québec")
+
+    if not HAS_PLOTLY:
+        st.error("❌ Plotly requis. Installer avec : `pip install plotly`")
+    else:
+        # Contrôles
+        col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+        with col_ctrl1:
+            afficher_routes = st.checkbox("Afficher les routes O-D", value=True)
+        with col_ctrl2:
+            filtrer_cd = st.selectbox("Filtrer par CD",
+                ["Tous"] + ["CD-Montreal", "CD-Quebec", "CD-Sherbrooke", "CD-Gatineau"])
+        with col_ctrl3:
+            derniere_sem_map = df["Semaine"].max()
+            sem_map = st.selectbox("Semaine KPI", sorted(df["Semaine"].unique(), reverse=True),
+                                    key="sem_map")
+
+        # Données KPI pour coloration
+        df_map = df[df["Semaine"] == sem_map].copy()
+        df_map["Ecart"] = df_map["Taux_service_reel"] - df_map["Taux_service_cible"]
+        df_map["Couleur_status"] = df_map["Ecart"].apply(
+            lambda x: "Objectif atteint" if x >= 0 else ("Ecart faible" if x >= -2 else "Sous la cible"))
+
+        fig = go.Figure()
+
+        # ── ROUTES O-D ──────────────────────────────────────────
+        if afficher_routes:
+            etabs_a_afficher = [e for e in ETAB_TO_CD.keys()
+                                if filtrer_cd == "Tous" or ETAB_TO_CD[e] == filtrer_cd]
+            for etab in etabs_a_afficher:
+                cd = ETAB_TO_CD[etab]
+                if etab in COORDS and cd in COORDS:
+                    lat_etab, lon_etab = COORDS[etab]
+                    lat_cd, lon_cd = COORDS[cd]
+                    # Couleur selon performance KPI
+                    row_kpi = df_map[df_map["Etablissement"] == etab]
+                    if not row_kpi.empty:
+                        status = row_kpi.iloc[0]["Couleur_status"]
+                        couleur = "#2ECC71" if status == "Objectif atteint" else \
+                                  "#F39C12" if status == "Ecart faible" else "#E74C3C"
+                        width = 2.5
+                    else:
+                        couleur = "#95A5A6"
+                        width = 1.5
+                    fig.add_trace(go.Scattergeo(
+                        lon=[lon_cd, lon_etab, None],
+                        lat=[lat_cd, lat_etab, None],
+                        mode="lines",
+                        line=dict(width=width, color=couleur),
+                        hoverinfo="skip",
+                        showlegend=False,
+                    ))
+
+        # ── CENTRES DE DISTRIBUTION ─────────────────────────────
+        cds = ["CD-Montreal", "CD-Quebec", "CD-Sherbrooke", "CD-Gatineau"]
+        cd_lats = [COORDS[cd][0] for cd in cds if cd in COORDS]
+        cd_lons = [COORDS[cd][1] for cd in cds if cd in COORDS]
+        cd_noms = [cd for cd in cds if cd in COORDS]
+        fig.add_trace(go.Scattergeo(
+            lon=cd_lons, lat=cd_lats,
+            mode="markers+text",
+            marker=dict(size=18, color="#1F3864", symbol="square",
+                       line=dict(width=2, color="white")),
+            text=[cd.replace("CD-", "") for cd in cd_noms],
+            textposition="top center",
+            textfont=dict(size=10, color="#1F3864", family="Arial Black"),
+            name="Centres de distribution",
+            hovertemplate="<b>%{text}</b><extra></extra>",
+        ))
+
+        # ── ÉTABLISSEMENTS avec KPIs ─────────────────────────────
+        for status, couleur, symbole in [
+            ("Objectif atteint", "#2ECC71", "circle"),
+            ("Ecart faible", "#F39C12", "circle"),
+            ("Sous la cible", "#E74C3C", "circle"),
+            ("Sans données", "#95A5A6", "circle-open"),
+        ]:
+            if status == "Sans données":
+                etabs_status = [e for e in ETAB_TO_CD.keys()
+                                if e not in df_map["Etablissement"].values
+                                and (filtrer_cd == "Tous" or ETAB_TO_CD.get(e) == filtrer_cd)]
+            else:
+                etabs_df = df_map[df_map["Couleur_status"] == status]["Etablissement"].tolist()
+                etabs_status = [e for e in etabs_df
+                                if filtrer_cd == "Tous" or ETAB_TO_CD.get(e) == filtrer_cd]
+
+            if not etabs_status:
+                continue
+
+            lats = [COORDS[e][0] for e in etabs_status if e in COORDS]
+            lons = [COORDS[e][1] for e in etabs_status if e in COORDS]
+            noms = [e for e in etabs_status if e in COORDS]
+
+            if status != "Sans données":
+                hover_texts = []
+                for e in noms:
+                    row = df_map[df_map["Etablissement"] == e]
+                    if not row.empty:
+                        r = row.iloc[0]
+                        hover_texts.append(
+                            f"<b>{e}</b><br>"
+                            f"Taux: {r['Taux_service_reel']:.1f}% (cible: {r['Taux_service_cible']:.1f}%)<br>"
+                            f"Écart: {r['Ecart']:+.1f}%<br>"
+                            f"Fréq: {int(r['Frequence_livraison_reelle'])}/sem<br>"
+                            f"CD: {ETAB_TO_CD.get(e,'N/A')}"
+                        )
+                    else:
+                        hover_texts.append(e)
+            else:
+                hover_texts = [f"<b>{e}</b><br>Données non disponibles" for e in noms]
+
+            fig.add_trace(go.Scattergeo(
+                lon=lons, lat=lats,
+                mode="markers",
+                marker=dict(size=10, color=couleur, symbol=symbole,
+                           line=dict(width=1.5, color="white")),
+                name=status,
+                hovertemplate="%{customdata}<extra></extra>",
+                customdata=hover_texts,
+            ))
+
+        # ── MISE EN PAGE ─────────────────────────────────────────
+        fig.update_layout(
+            geo=dict(
+                scope="north america",
+                resolution=50,
+                showland=True, landcolor="#F8F9FA",
+                showocean=True, oceancolor="#EBF5FB",
+                showlakes=True, lakecolor="#EBF5FB",
+                showrivers=True, rivercolor="#AED6F1",
+                showcountries=True, countrycolor="#BDC3C7",
+                showsubunits=True, subunitcolor="#D5D8DC",
+                center=dict(lat=48.5, lon=-72.0),
+                projection_scale=5.5,
+            ),
+            height=600,
+            margin=dict(l=0, r=0, t=30, b=0),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02,
+                xanchor="right", x=1,
+                bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="#BDC3C7", borderwidth=1,
+            ),
+            title=dict(
+                text=f"Réseau O-D Santé Québec — {filtrer_cd} — Semaine {sem_map}",
+                font=dict(size=14, color="#1F3864"),
+                x=0.5,
+            ),
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Légende explicative
+        col_leg1, col_leg2, col_leg3, col_leg4 = st.columns(4)
+        col_leg1.markdown("🟦 **Centre de distribution**")
+        col_leg2.markdown("🟢 **Objectif atteint** (≥ cible)")
+        col_leg3.markdown("🟠 **Écart faible** (< 2%)")
+        col_leg4.markdown("🔴 **Sous la cible** (> 2%)")
+
+        # Stats réseau
+        st.markdown("---")
+        st.markdown("#### Statistiques du réseau")
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        nb_etabs = len([e for e in ETAB_TO_CD if filtrer_cd == "Tous" or ETAB_TO_CD[e] == filtrer_cd])
+        nb_cds = len(set(ETAB_TO_CD.values())) if filtrer_cd == "Tous" else 1
+        nb_corridors = len([e for e in ETAB_TO_CD if filtrer_cd == "Tous" or ETAB_TO_CD[e] == filtrer_cd])
+        dist_max = max([850, 420, 380, 320]) if filtrer_cd in ["Tous", "CD-Quebec"] else 80
+
+        col_s1.metric("Établissements", nb_etabs)
+        col_s2.metric("Centres de distribution", nb_cds)
+        col_s3.metric("Corridors actifs", nb_corridors)
+        col_s4.metric("Distance max (km)", dist_max)
 
 # ─── FOOTER ──────────────────────────────────────────────────
 st.markdown("---")
