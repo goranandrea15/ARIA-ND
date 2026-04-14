@@ -1,0 +1,11 @@
+Etablissement,Taux_service_cible,Frequence_optimale,Valide_par,Date_validation,Statut
+CHUM,98.0,7,,,EN_ATTENTE
+McGill-Univ-Health,98.0,7,,,EN_ATTENTE
+CIUSSS-NordMTL,96.0,5,,,EN_ATTENTE
+CISSS-Laval,96.0,5,,,EN_ATTENTE
+CISSS-Monteregie-O,96.0,3,,,EN_ATTENTE
+CISSS-Monteregie-C,96.0,3,,,EN_ATTENTE
+CISSS-Monteregie-E,96.0,3,,,EN_ATTENTE
+CISSS-Lanaudiere,96.0,3,,,EN_ATTENTE
+CISSS-Laurentides,96.0,3,,,EN_ATTENTE
+CHSLD-Longueuil,96.0,5,,,EN_ATTENTE
