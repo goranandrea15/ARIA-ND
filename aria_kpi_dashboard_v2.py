@@ -30,8 +30,20 @@ SEUILS_DEFAULT = {
 
 # ─── FONCTIONS ────────────────────────────────────────────────
 def load_seuils():
+    dtype_map = {
+        "Etablissement": str,
+        "Taux_service_cible": float,
+        "Frequence_optimale": int,
+        "Valide_par": str,
+        "Date_validation": str,
+        "Statut": str,
+    }
     if os.path.exists(SEUILS_FILE):
-        df = pd.read_csv(SEUILS_FILE)
+        df = pd.read_csv(SEUILS_FILE, dtype=dtype_map)
+        # S'assurer que les colonnes texte ne contiennent pas de NaN
+        df["Valide_par"] = df["Valide_par"].fillna("").astype(str)
+        df["Date_validation"] = df["Date_validation"].fillna("").astype(str)
+        df["Statut"] = df["Statut"].fillna("EN_ATTENTE").astype(str)
         return df
     rows = []
     for etab, (ts, fo) in SEUILS_DEFAULT.items():
